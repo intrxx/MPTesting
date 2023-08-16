@@ -63,6 +63,11 @@ public:
 	/** Returns FollowCamera subobject **/
 	FORCEINLINE class UCameraComponent* GetFollowCamera() const { return FollowCamera; }
 
+
+	/*
+	*  LAN Connection
+	*/
+	
 	UFUNCTION(BlueprintCallable)
 	void OpenLobby();
 
@@ -71,5 +76,9 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	void CallClientTravel(const FString& Address);
+
+	/*
+	 *
+	 */
 };
 
