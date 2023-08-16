@@ -67,6 +67,10 @@ void AMPTestingCharacter::BeginPlay()
 	}
 }
 
+/*
+ *  LAN Connection
+ */
+
 void AMPTestingCharacter::OpenLobby()
 {
 	UWorld* World = GetWorld();
@@ -89,6 +93,10 @@ void AMPTestingCharacter::CallClientTravel(const FString& Address)
 		PC->ClientTravel(Address, TRAVEL_Absolute);
 	}
 }
+
+/*
+ *
+ */
 
 //////////////////////////////////////////////////////////////////////////
 // Input
