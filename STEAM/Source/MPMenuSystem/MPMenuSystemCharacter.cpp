@@ -11,6 +11,7 @@
 #include "EnhancedInputSubsystems.h"
 #include "OnlineSubsystem.h"
 #include "OnlineSessionSettings.h"
+#include "Online/OnlineSessionNames.h"
 
 
 //////////////////////////////////////////////////////////////////////////
@@ -18,6 +19,8 @@
 
 AMPMenuSystemCharacter::AMPMenuSystemCharacter()
 	: CreateSessionCompleteDelegate(FOnCreateSessionCompleteDelegate::CreateUObject(this, &ThisClass::OnCreateSessionComplete))
+    , FindSessionsCompleteDelegate(FOnFindSessionsCompleteDelegate::CreateUObject(this, &ThisClass::OnFindSessionComplete))
+	, JoinSessionCompleteDelegate(FOnJoinSessionCompleteDelegate::CreateUObject(this, &ThisClass::OnJoinSessionComplete))
 {
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
@@ -104,11 +107,30 @@ void AMPMenuSystemCharacter::CreateGameSession()
 	SessionSettings->bAllowJoinViaPresence = true;
 	SessionSettings->bShouldAdvertise = true;
 	SessionSettings->bUsesPresence = true;
-	
+	SessionSettings->bUseLobbiesIfAvailable = true;
 	SessionSettings->Set(FName("MatchType"), FString("FreeForAll"), EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
 	
 	const ULocalPlayer* LocalPlayer = GetWorld()->GetFirstLocalPlayerFromController();
 	OnlineSessionInterface->CreateSession(*LocalPlayer->GetPreferredUniqueNetId(), NAME_GameSession, *SessionSettings);
+}
+
+void AMPMenuSystemCharacter::JoinGameSession()
+{
+	// Find game sessions
+	if(!OnlineSessionInterface.IsValid())
+	{
+		return;
+	}
+
+	OnlineSessionInterface->AddOnFindSessionsCompleteDelegate_Handle(FindSessionsCompleteDelegate);
+	
+	SessionSearch = MakeShareable(new FOnlineSessionSearch());
+	SessionSearch->MaxSearchResults = 20000;
+	SessionSearch->bIsLanQuery = false;
+	SessionSearch->QuerySettings.Set(SEARCH_PRESENCE, true, EOnlineComparisonOp::Equals);
+
+	const ULocalPlayer* LocalPlayer = GetWorld()->GetFirstLocalPlayerFromController();
+	OnlineSessionInterface->FindSessions(*LocalPlayer->GetPreferredUniqueNetId(), SessionSearch.ToSharedRef());
 }
 
 void AMPMenuSystemCharacter::OnCreateSessionComplete(FName SessionName, bool bWasSuccessful)
@@ -120,6 +142,12 @@ void AMPMenuSystemCharacter::OnCreateSessionComplete(FName SessionName, bool bWa
 			GEngine->AddOnScreenDebugMessage(-1, 15.f, FColor::Green,
 				FString::Printf(TEXT("Successfuly created session: %s"), *SessionName.ToString()));
 		}
+
+		UWorld* World = GetWorld();
+		if(World)
+		{
+			World->ServerTravel(FString("/Game/ThirdPerson/Maps/Lobby?listen"));
+		}
 	}
 	else
 	{
@@ -128,6 +156,61 @@ void AMPMenuSystemCharacter::OnCreateSessionComplete(FName SessionName, bool bWa
 			GEngine->AddOnScreenDebugMessage(-1, 15.f, FColor::Red,
 				FString::Printf(TEXT("Failed to create Session")));
 		}
+	}
+}
+
+void AMPMenuSystemCharacter::OnFindSessionComplete(bool bWasSuccessful)
+{
+	if (!OnlineSessionInterface.IsValid())
+	{
+		return;
+	}
+	
+	for(auto Result : SessionSearch->SearchResults)
+	{
+		FString Id = Result.GetSessionIdStr();
+		FString User = Result.Session.OwningUserName;
+
+		FString MatchType;
+		Result.Session.SessionSettings.Get(FName("MatchType"), MatchType);
+		
+		if(GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 15.f, FColor::Emerald,
+				FString::Printf(TEXT("Id: %s, User: %s"), *Id, *User));
+		}
+
+		if(MatchType == FString("FreeForAll"))
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 15.f, FColor::Emerald,
+				FString::Printf(TEXT("Joining Match Type: %s"), *MatchType));
+
+			OnlineSessionInterface->AddOnJoinSessionCompleteDelegate_Handle(JoinSessionCompleteDelegate);
+
+			const ULocalPlayer* LocalPlayer = GetWorld()->GetFirstLocalPlayerFromController();
+			OnlineSessionInterface->JoinSession(*LocalPlayer->GetPreferredUniqueNetId(), NAME_GameSession, Result);
+		}
+	}
+}
+
+void AMPMenuSystemCharacter::OnJoinSessionComplete(FName SessionName, EOnJoinSessionCompleteResult::Type Result)
+{
+	if(!OnlineSessionInterface.IsValid())
+	{
+		return;
+	}
+
+	FString Address;
+	if(OnlineSessionInterface->GetResolvedConnectString(NAME_GameSession, Address))
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 15.f, FColor::Yellow,
+				FString::Printf(TEXT("Connect String: %s"), *Address));
+	}
+
+	APlayerController* PC = GetGameInstance()->GetFirstLocalPlayerController();
+	if(PC)
+	{
+		PC->ClientTravel(Address, TRAVEL_Absolute);
 	}
 }
 
